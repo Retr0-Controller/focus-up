@@ -5,7 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/components/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { SPENDING_TYPES, UMBRELLAS } from '@/constants/categories';
+import { UmbrellaGrid } from '@/components/umbrella-grid';
+import { SPENDING_TYPES } from '@/constants/categories';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useSession } from '@/hooks/use-session';
 import { useTheme } from '@/hooks/use-theme';
@@ -162,31 +163,7 @@ function TypeStep({
           </ThemedText>
         </ThemedView>
 
-        <View style={styles.grid}>
-          {UMBRELLAS.map((umbrella) => {
-            const selected = selectedId === umbrella.id;
-            return (
-              <Pressable
-                key={umbrella.id}
-                accessibilityRole="button"
-                accessibilityLabel={umbrella.name}
-                accessibilityState={{ selected }}
-                onPress={() => onChoose(umbrella.id)}
-                style={({ pressed }) => [
-                  styles.option,
-                  {
-                    backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement,
-                    borderColor: selected ? theme.accent : 'transparent',
-                  },
-                ]}>
-                <ThemedText accessibilityElementsHidden>{umbrella.emoji}</ThemedText>
-                <ThemedText type={selected ? 'smallBold' : 'small'} style={styles.optionText}>
-                  {selected ? `✓ ${umbrella.name}` : umbrella.name}
-                </ThemedText>
-              </Pressable>
-            );
-          })}
-        </View>
+        <UmbrellaGrid selectedId={selectedId ?? null} onSelect={onChoose} />
 
         <Pressable accessibilityRole="button" onPress={onSkipThisOne} style={styles.skipOne}>
           <ThemedText type="linkPrimary">Not sure, skip this one</ThemedText>
@@ -285,27 +262,6 @@ const styles = StyleSheet.create({
   typeHeader: {
     alignItems: 'center',
     gap: Spacing.two,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-  },
-  option: {
-    // Two per row, minus half the gap on each side.
-    flexBasis: '48%',
-    flexGrow: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    minHeight: 56,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.three,
-    borderWidth: 2,
-  },
-  optionText: {
-    flex: 1,
   },
   skipOne: {
     alignSelf: 'center',

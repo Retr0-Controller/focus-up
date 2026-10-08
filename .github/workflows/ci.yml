@@ -1,0 +1,31 @@
+name: Checks
+
+# Runs on every pull request and on every push to main.
+# The database tests (npm run test:db) are not run here because they need a login to your
+# Supabase project. Run them yourself before changing the schema.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx expo lint
+
+      - name: Tests
+        run: npm test -- --ci

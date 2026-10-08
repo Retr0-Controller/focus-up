@@ -1,56 +1,98 @@
-# Welcome to your Expo app 👋
+# Focus Up
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A personal finance app for people with ADHD, and anyone who finds the executive-function side of money
+hard: forgotten subscriptions, missed bills, impulse spending. It aims to take as little remembering
+and effort as possible.
 
-## Get started
+**Design principles**
 
-1. Install dependencies
+- Low effort: logging an expense takes a few taps.
+- Nothing depends on the user remembering to do something.
+- Non-shaming wording everywhere. Neutral, no guilt.
+- The user decides how their spending is sorted, and the app remembers it.
+- Status is never shown by color alone.
+
+## Stack
+
+- React Native with Expo (SDK 57), Expo Router, and TypeScript, for iOS and Android
+- Supabase: PostgreSQL, email and password auth, row-level security
+- Tested on a phone through Expo Go. Phone only, there is no web build.
+
+## Running it
+
+1. Install dependencies:
 
    ```bash
    npm install
    ```
 
-2. Start the app
+2. Create `.env.local` with your Supabase project's URL and publishable key. Both are public by design,
+   because row-level security protects the data. Never put the secret key or database password here.
+
+   ```bash
+   EXPO_PUBLIC_SUPABASE_URL=...
+   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
+   ```
+
+3. Start the app and open it in Expo Go:
 
    ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Checks
 
 ```bash
-npm run reset-project
+npx tsc --noEmit   # typecheck
+npx expo lint      # lint
+npm test           # all automated tests (see below)
+npm run test:watch # re-run tests as you edit
+npm run test:db    # database security tests (needs the Supabase login and link, see Database)
+npx expo-doctor    # project health
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+GitHub runs the typecheck, lint, and `npm test` on every pull request (`.github/workflows/ci.yml`).
 
-### Other setup steps
+## Tests
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+`npm test` runs everything below in a few seconds and never touches the network or a real account.
 
-## Learn more
+| Layer | Where | What it covers |
+| --- | --- | --- |
+| Logic | `src/lib/*.test.ts` | Money in cents, dates and month ranges, the left-to-spend math |
+| Screens | `__tests__/*.test.tsx` | Each screen as a person uses it: tapping, typing, and what shows up. Supabase is faked. |
+| Database | `supabase/tests/security.sql` | Row-level security, constraints, and sign-up behavior, against the real schema |
 
-To learn more about developing your project with Expo, look at the following resources:
+**Adding tests for a new feature**
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+- A new calculation or helper: add `something.test.ts` next to it in `src/lib/`.
+- A new screen: add `__tests__/<screen>.test.tsx`. Copy the closest existing one. Mock `@/lib/api`, set up the
+  data with `mockedApi.someFunction.mockResolvedValue(...)`, then `userEvent` and `screen` do the rest.
+  `src/test-utils/fixtures.ts` has ready-made fake expenses and sessions.
+- A new table or rule: add checks to `supabase/tests/security.sql` above the final `RAISE`, then run `npm run test:db`.
+- Shared fakes (Supabase, the router, the date picker) live in `jest.setup.ts`.
 
-## Join the community
+## Database
 
-Join our community of developers creating universal apps.
+The schema lives in `supabase/migrations/` and is applied with the Supabase CLI, which is a dev
+dependency. Run these from the project folder:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+npx supabase login
+npx supabase link --project-ref <your-project-ref>
+npx supabase db push
+```
+
+Money is stored as whole cents (`1250` is $12.50). Every per-user table is limited to its owner by
+row-level security, and the nine category "umbrellas" are shared, read-only rows.
+
+## Code layout
+
+- `src/app/`: screens and routes (Expo Router)
+- `src/components/`: shared UI pieces
+- `src/hooks/`: session and data hooks
+- `src/lib/api.ts`: **every** Supabase call. Screens call functions like `addExpense()` and never use
+  the Supabase client directly.
+- `src/lib/money.ts`, `dates.ts`, `calc.ts`: pure logic, covered by tests
+- `__tests__/`, `src/test-utils/`, `jest.setup.ts`, `supabase/tests/`: automated tests
+- `src/constants/`: theme and the fixed umbrellas
