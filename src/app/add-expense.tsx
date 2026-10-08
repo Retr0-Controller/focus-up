@@ -1,6 +1,7 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -21,25 +22,42 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
   addExpense,
+  deleteExpense,
+  getExpense,
   listMerchantRules,
   listTypeRules,
   saveMerchantRule,
+  updateExpense,
   type MerchantRule,
   type TypeRule,
 } from '@/lib/api';
 import { normalizeName } from '@/lib/calc';
-import { toDateString } from '@/lib/dates';
+import { fromDateString, toDateString } from '@/lib/dates';
 import { parseAmountToCents } from '@/lib/money';
 
+const SAVE_FAILED = "That didn't save just now. Check your connection and try again.";
+
+/**
+ * Adds an expense, or edits one when opened with an `id`. Editing changes only that purchase:
+ * it never creates or changes the saved merchant rule.
+ */
 export default function AddExpenseScreen() {
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const isEdit = Boolean(id);
   const theme = useTheme();
+
   const [amountText, setAmountText] = useState('');
   const [merchant, setMerchant] = useState('');
   const [date, setDate] = useState(() => new Date());
   const [detail, setDetail] = useState('');
-  // The umbrella the user picked for this purchase. Null means "use the remembered one, if any".
+  // The umbrella the user picked in this session. Null means "no change" (or "use the remembered one").
   const [picked, setPicked] = useState<number | null>(null);
   const [changingRule, setChangingRule] = useState(false);
+
+  // Editing only: the expense being edited, and whether it has loaded.
+  const [originalCategoryId, setOriginalCategoryId] = useState<number | null>(null);
+  const [loadingExpense, setLoadingExpense] = useState(isEdit);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const [merchantRules, setMerchantRules] = useState<MerchantRule[]>([]);
   const [typeRules, setTypeRules] = useState<TypeRule[]>([]);
@@ -48,55 +66,79 @@ export default function AddExpenseScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (id) {
+      getExpense(id)
+        .then((expense) => {
+          setAmountText((expense.amount_cents / 100).toFixed(2));
+          setMerchant(expense.merchant);
+          setDate(fromDateString(expense.spent_on));
+          setDetail(expense.detail ?? '');
+          setOriginalCategoryId(expense.category_id);
+        })
+        .catch((e) => {
+          console.warn('Could not load expense', e);
+          setLoadFailed(true);
+        })
+        .finally(() => setLoadingExpense(false));
+      return;
+    }
     // Rules are only a convenience, so if they can't load the form still works unsorted.
     listMerchantRules().then(setMerchantRules).catch((e) => console.warn('merchant rules', e));
     listTypeRules().then(setTypeRules).catch((e) => console.warn('type rules', e));
-  }, []);
+  }, [id]);
 
   const cleanMerchant = merchant.trim().replace(/\s+/g, ' ');
   const rule = useMemo(
     () =>
-      cleanMerchant
+      !isEdit && cleanMerchant
         ? merchantRules.find((r) => normalizeName(r.merchant) === normalizeName(cleanMerchant))
         : undefined,
-    [cleanMerchant, merchantRules],
+    [isEdit, cleanMerchant, merchantRules],
   );
   const ruleUmbrella = umbrellaById(rule?.category_id ?? null);
-  const showGrid = !rule || changingRule;
-  const categoryId = picked ?? rule?.category_id ?? null;
+  const showGrid = isEdit || !rule || changingRule;
+  const selectedCategoryId = isEdit ? (picked ?? originalCategoryId) : (picked ?? rule?.category_id ?? null);
 
-  async function handleSave() {
-    setError(null);
+  /** Checks what was typed. Returns the cleaned values, or sets an error and returns null. */
+  function readForm() {
     const amountCents = parseAmountToCents(amountText);
     if (amountCents === null) {
       setError("That amount doesn't look quite right. Try something like 12.50.");
-      return;
+      return null;
     }
     if (!cleanMerchant) {
       setError('Add where it was spent, even a short name works.');
-      return;
+      return null;
     }
+    return { amountCents, merchant: cleanMerchant, spentOn: toDateString(date), detail: detail.trim() || null };
+  }
+
+  async function handleSave() {
+    setError(null);
+    const form = readForm();
+    if (!form) return;
 
     setSaving(true);
     try {
-      await addExpense({
-        amountCents,
-        merchant: cleanMerchant,
-        spentOn: toDateString(date),
-        categoryId,
-        detail: detail.trim() || null,
-        source: picked !== null ? 'user' : 'rule',
-      });
+      if (id) {
+        await updateExpense(id, { ...form, ...(picked === null ? {} : { categoryId: picked }) });
+      } else {
+        await addExpense({
+          ...form,
+          categoryId: selectedCategoryId,
+          source: picked !== null ? 'user' : 'rule',
+        });
+      }
     } catch (e) {
       console.warn('Could not save expense', e);
-      setError("That didn't save just now. Check your connection and try again.");
+      setError(SAVE_FAILED);
       setSaving(false);
       return;
     }
 
     // Sort once, remember after: a brand-new merchant that got sorted becomes a saved rule.
     // A merchant that already has a rule keeps it, so a one-off re-sort stays one-off.
-    if (!rule && picked !== null) {
+    if (!isEdit && !rule && picked !== null) {
       try {
         await saveMerchantRule(cleanMerchant, picked);
       } catch (e) {
@@ -106,18 +148,60 @@ export default function AddExpenseScreen() {
     router.back();
   }
 
+  function confirmDelete() {
+    Alert.alert('Delete this expense?', "This can't be undone.", [
+      { text: 'Keep it', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: handleDelete },
+    ]);
+  }
+
+  async function handleDelete() {
+    if (!id) return;
+    setError(null);
+    try {
+      await deleteExpense(id);
+    } catch (e) {
+      console.warn('Could not delete expense', e);
+      setError("That didn't delete just now. Check your connection and try again.");
+      return;
+    }
+    router.back();
+  }
+
+  const closeButton = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Close without saving"
+      onPress={() => router.back()}
+      style={styles.closeButton}>
+      <ThemedText type="linkPrimary">Close</ThemedText>
+    </Pressable>
+  );
+
+  if (isEdit && (loadingExpense || loadFailed)) {
+    return (
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.topBar}>
+            <ThemedText type="subtitle">Edit expense</ThemedText>
+            {closeButton}
+          </View>
+          <ThemedText themeColor="textSecondary">
+            {loadFailed
+              ? "We couldn't open that expense just now. Close this and try again."
+              : 'Loading…'}
+          </ThemedText>
+        </SafeAreaView>
+      </ThemedView>
+    );
+  }
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.topBar}>
-          <ThemedText type="subtitle">Add expense</ThemedText>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close without saving"
-            onPress={() => router.back()}
-            style={styles.closeButton}>
-            <ThemedText type="linkPrimary">Close</ThemedText>
-          </Pressable>
+          <ThemedText type="subtitle">{isEdit ? 'Edit expense' : 'Add expense'}</ThemedText>
+          {closeButton}
         </View>
 
         <KeyboardAvoidingView
@@ -132,7 +216,7 @@ export default function AddExpenseScreen() {
               value={amountText}
               onChangeText={setAmountText}
               keyboardType="decimal-pad"
-              autoFocus
+              autoFocus={!isEdit}
               accessibilityLabel="Amount"
               style={styles.amountInput}
             />
@@ -168,15 +252,25 @@ export default function AddExpenseScreen() {
             {showGrid && (
               <View style={styles.sortSection}>
                 <ThemedText type="smallBold">
-                  {rule ? 'Just for this purchase' : 'Where does this belong?'}
+                  {isEdit
+                    ? 'Where does this belong?'
+                    : rule
+                      ? 'Just for this purchase'
+                      : 'Where does this belong?'}
                 </ThemedText>
-                {!rule && (
+                {isEdit ? (
                   <ThemedText type="small" themeColor="textSecondary">
-                    Pick once and we&apos;ll remember it for next time. Or skip it for now.
+                    This changes only this purchase. Your saved rule for the merchant stays the same.
                   </ThemedText>
+                ) : (
+                  !rule && (
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Pick once and we&apos;ll remember it for next time. Or skip it for now.
+                    </ThemedText>
+                  )
                 )}
 
-                {!rule && typeRules.length > 0 && (
+                {!isEdit && !rule && typeRules.length > 0 && (
                   <View style={styles.shortcuts}>
                     <ThemedText type="small" themeColor="textSecondary">
                       Your shortcuts
@@ -209,7 +303,7 @@ export default function AddExpenseScreen() {
                   </View>
                 )}
 
-                <UmbrellaGrid selectedId={categoryId} onSelect={setPicked} />
+                <UmbrellaGrid selectedId={selectedCategoryId} onSelect={setPicked} />
               </View>
             )}
 
@@ -226,7 +320,17 @@ export default function AddExpenseScreen() {
               </ThemedText>
             )}
 
-            <PrimaryButton title="Save" loading={saving} onPress={handleSave} />
+            <PrimaryButton
+              title={isEdit ? 'Save changes' : 'Save'}
+              loading={saving}
+              onPress={handleSave}
+            />
+
+            {isEdit && (
+              <Pressable accessibilityRole="button" onPress={confirmDelete} style={styles.deleteLink}>
+                <ThemedText type="linkPrimary">Delete this expense</ThemedText>
+              </Pressable>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -276,6 +380,11 @@ const styles = StyleSheet.create({
   inlineLink: {
     alignSelf: 'flex-start',
     paddingVertical: Spacing.one,
+  },
+  deleteLink: {
+    alignSelf: 'center',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
   },
   sortSection: {
     gap: Spacing.two,

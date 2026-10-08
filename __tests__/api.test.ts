@@ -1,14 +1,16 @@
 import {
   addExpense,
   completeOnboarding,
+  deleteExpense,
+  getExpense,
   getProfile,
   listExpenses,
   listMerchantRules,
   listTypeRules,
-  resortExpense,
   saveMerchantRule,
   saveTypeRule,
   setMonthlyAmount,
+  updateExpense,
 } from '@/lib/api';
 import { fakeQuery, fakeTables } from '@/test-utils/fake-supabase';
 
@@ -161,16 +163,100 @@ describe('addExpense', () => {
   });
 });
 
-describe('resortExpense', () => {
-  it('changes only that one expense, and marks it as chosen by the user', async () => {
+describe('getExpense', () => {
+  const row = { id: 'e1', amount_cents: 1250, merchant: 'Cafe', spent_on: '2026-10-08', category_id: 2, detail: null };
+
+  it('loads exactly one expense by id', async () => {
+    const expenses = fakeQuery({ data: { ...row, category_source: 'rule' } });
+    const queried = fakeTables({ expenses });
+
+    const expense = await getExpense('e1');
+
+    expect(queried).toEqual(['expenses']);
+    expect(expenses.args('select')).toEqual(['id, amount_cents, merchant, spent_on, category_id, detail, category_source']);
+    expect(expenses.args('eq')).toEqual(['id', 'e1']);
+    expect(expenses.steps()).toContain('single');
+    expect(expense).toEqual({ ...row, category_source: 'rule' });
+  });
+
+  it('drops an unexpected category source, like the list does', async () => {
+    fakeTables({ expenses: fakeQuery({ data: { ...row, category_source: 'robot' } }) });
+    expect((await getExpense('e1')).category_source).toBeNull();
+  });
+
+  it('throws when the expense cannot be loaded', async () => {
+    fakeTables({ expenses: fakeQuery({ error: databaseError }) });
+    await expect(getExpense('e1')).rejects.toBe(databaseError);
+  });
+});
+
+describe('updateExpense', () => {
+  const changes = { amountCents: 2000, merchant: "Trader Joe's", spentOn: '2026-10-07', detail: 'weekly shop' };
+
+  it('changes only that one expense', async () => {
     const expenses = fakeQuery();
     const queried = fakeTables({ expenses });
 
-    await resortExpense('e1', 5);
+    await updateExpense('e1', changes);
 
     expect(queried).toEqual(['expenses']); // the saved merchant rule is never touched
-    expect(expenses.args('update')).toEqual([{ category_id: 5, category_source: 'user' }]);
     expect(expenses.args('eq')).toEqual(['id', 'e1']);
+  });
+
+  it('maps the fields onto the table columns', async () => {
+    const expenses = fakeQuery();
+    fakeTables({ expenses });
+
+    await updateExpense('e1', { ...changes, detail: null });
+
+    expect(expenses.args('update')).toEqual([
+      { amount_cents: 2000, merchant: "Trader Joe's", spent_on: '2026-10-07', detail: null },
+    ]);
+  });
+
+  it('leaves the category and who chose it alone when no new umbrella was picked', async () => {
+    const expenses = fakeQuery();
+    fakeTables({ expenses });
+
+    await updateExpense('e1', changes);
+
+    const [payload] = expenses.args('update')! as [Record<string, unknown>];
+    expect(payload).not.toHaveProperty('category_id');
+    expect(payload).not.toHaveProperty('category_source');
+  });
+
+  it('records a newly picked umbrella as chosen by the user', async () => {
+    const expenses = fakeQuery();
+    fakeTables({ expenses });
+
+    await updateExpense('e1', { ...changes, categoryId: 5 });
+
+    expect(expenses.args('update')).toEqual([
+      expect.objectContaining({ category_id: 5, category_source: 'user' }),
+    ]);
+  });
+
+  it('throws when the changes cannot be saved', async () => {
+    fakeTables({ expenses: fakeQuery({ error: databaseError }) });
+    await expect(updateExpense('e1', changes)).rejects.toBe(databaseError);
+  });
+});
+
+describe('deleteExpense', () => {
+  it('deletes only that one expense', async () => {
+    const expenses = fakeQuery();
+    const queried = fakeTables({ expenses });
+
+    await deleteExpense('e1');
+
+    expect(queried).toEqual(['expenses']);
+    expect(expenses.steps()).toEqual(['delete', 'eq']);
+    expect(expenses.args('eq')).toEqual(['id', 'e1']);
+  });
+
+  it('throws when it cannot be deleted', async () => {
+    fakeTables({ expenses: fakeQuery({ error: databaseError }) });
+    await expect(deleteExpense('e1')).rejects.toBe(databaseError);
   });
 });
 

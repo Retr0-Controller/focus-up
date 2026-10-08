@@ -1,18 +1,17 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/primary-button';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { UmbrellaGrid } from '@/components/umbrella-grid';
 import { umbrellaById } from '@/constants/categories';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useMonthData } from '@/hooks/use-month-data';
 import { useSession } from '@/hooks/use-session';
-import { resortExpense, setMonthlyAmount, type Expense } from '@/lib/api';
+import { setMonthlyAmount, type Expense } from '@/lib/api';
 import { formatShortDate } from '@/lib/dates';
 import { formatCents, parseAmountToCents } from '@/lib/money';
 import { supabase } from '@/lib/supabase';
@@ -22,29 +21,10 @@ export default function HomeScreen() {
   const userId = session?.user.id;
   const month = useMonthData(userId);
   const [editingAmount, setEditingAmount] = useState(false);
-  const [resorting, setResorting] = useState<Expense | null>(null);
 
   const monthName = new Date().toLocaleDateString('en-US', { month: 'long' });
   const showAmountForm = month.loaded && (month.monthlyCents === null || editingAmount);
   const leftCents = month.summary.leftCents ?? 0;
-
-  async function handleResort(umbrellaId: number) {
-    const target = resorting;
-    if (!target) return;
-    setResorting(null);
-    // Show the change right away, then save. If the save fails, reload the real values.
-    month.setExpenses((current) =>
-      current.map((e) =>
-        e.id === target.id ? { ...e, category_id: umbrellaId, category_source: 'user' } : e,
-      ),
-    );
-    try {
-      await resortExpense(target.id, umbrellaId);
-    } catch (error) {
-      console.warn('Could not re-sort', error);
-      month.reload();
-    }
-  }
 
   return (
     <ThemedView style={styles.container}>
@@ -115,7 +95,11 @@ export default function HomeScreen() {
           )}
           <View style={styles.list}>
             {month.expenses.map((expense) => (
-              <ExpenseRow key={expense.id} expense={expense} onPress={() => setResorting(expense)} />
+              <ExpenseRow
+                key={expense.id}
+                expense={expense}
+                onPress={() => router.push({ pathname: '/add-expense', params: { id: expense.id } })}
+              />
             ))}
           </View>
 
@@ -130,37 +114,18 @@ export default function HomeScreen() {
         </ScrollView>
       </SafeAreaView>
 
-      <Modal
-        visible={resorting !== null}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setResorting(null)}>
-        <ThemedView style={styles.sheet}>
-          <ThemedText type="subtitle">Sort {resorting?.merchant}</ThemedText>
-          <ThemedText themeColor="textSecondary">
-            This changes only this purchase. Your saved rule for it stays the same.
-          </ThemedText>
-          <UmbrellaGrid selectedId={resorting?.category_id ?? null} onSelect={handleResort} />
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setResorting(null)}
-            style={styles.inlineLink}>
-            <ThemedText type="linkPrimary">Close</ThemedText>
-          </Pressable>
-        </ThemedView>
-      </Modal>
     </ThemedView>
   );
 }
 
 function ExpenseRow({ expense, onPress }: { expense: Expense; onPress: () => void }) {
   const umbrella = umbrellaById(expense.category_id);
-  const where = umbrella ? `${umbrella.emoji} ${umbrella.name}` : 'Not sorted yet · tap to sort';
+  const where = umbrella ? `${umbrella.emoji} ${umbrella.name}` : 'Not sorted yet';
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${expense.merchant}, ${formatCents(expense.amount_cents)}, ${where}. Tap to sort.`}
+      accessibilityLabel={`${expense.merchant}, ${formatCents(expense.amount_cents)}, ${where}. Tap to edit.`}
       onPress={onPress}>
       <ThemedView type="backgroundElement" style={styles.row}>
         <View style={styles.rowText}>
@@ -284,10 +249,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.one,
     paddingTop: Spacing.four,
-  },
-  sheet: {
-    flex: 1,
-    padding: Spacing.four,
-    gap: Spacing.three,
   },
 });

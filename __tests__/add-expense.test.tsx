@@ -1,9 +1,11 @@
-import { render, screen, userEvent } from '@testing-library/react-native';
-import { router } from 'expo-router';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
+import { Alert } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import AddExpenseScreen from '@/app/add-expense';
 import * as api from '@/lib/api';
 import { toDateString } from '@/lib/dates';
+import { makeExpense } from '@/test-utils/fixtures';
 
 jest.mock('@/lib/api');
 const mockedApi = jest.mocked(api);
@@ -191,5 +193,175 @@ describe('Add expense', () => {
 
     expect(router.back).toHaveBeenCalled();
     expect(mockedApi.addExpense).not.toHaveBeenCalled();
+  });
+});
+
+describe('Editing an expense', () => {
+  const expense = makeExpense({
+    id: 'e1',
+    amount_cents: 1250,
+    merchant: "Trader Joe's",
+    spent_on: '2026-10-07',
+    category_id: FOOD,
+    category_source: 'rule',
+    detail: 'weekly shop',
+  });
+
+  beforeEach(() => {
+    jest.mocked(useLocalSearchParams).mockReturnValue({ id: 'e1' });
+    mockedApi.getExpense.mockResolvedValue(expense);
+    mockedApi.updateExpense.mockResolvedValue();
+    mockedApi.deleteExpense.mockResolvedValue();
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  });
+
+  /** The buttons of the confirmation dialog that was shown. */
+  function dialogButtons() {
+    const [, , buttons] = jest.mocked(Alert.alert).mock.calls[0];
+    return buttons!;
+  }
+
+  it('opens with the current details filled in', async () => {
+    await render(<AddExpenseScreen />);
+
+    expect(await screen.findByText('Edit expense')).toBeOnTheScreen();
+    expect(screen.getByPlaceholderText('Amount (e.g. 12.50)')).toHaveDisplayValue('12.50');
+    expect(screen.getByPlaceholderText("Where? (e.g. Trader Joe's)")).toHaveDisplayValue("Trader Joe's");
+    expect(screen.getByPlaceholderText('Add a detail (optional)')).toHaveDisplayValue('weekly shop');
+    expect(screen.getByRole('button', { name: 'Food', selected: true })).toBeOnTheScreen();
+    expect(mockedApi.getExpense).toHaveBeenCalledWith('e1');
+  });
+
+  it('does not load the remembered rules, because editing never changes them', async () => {
+    await render(<AddExpenseScreen />);
+    await screen.findByText('Edit expense');
+
+    expect(mockedApi.listMerchantRules).not.toHaveBeenCalled();
+    expect(mockedApi.listTypeRules).not.toHaveBeenCalled();
+  });
+
+  it('saves changed details without touching the category', async () => {
+    const user = userEvent.setup();
+    await render(<AddExpenseScreen />);
+    const amount = await screen.findByPlaceholderText('Amount (e.g. 12.50)');
+
+    await user.clear(amount);
+    await user.type(amount, '20');
+    await user.press(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(mockedApi.updateExpense).toHaveBeenCalledTimes(1);
+    const [id, changes] = mockedApi.updateExpense.mock.calls[0];
+    expect(id).toBe('e1');
+    expect(changes).toEqual({ amountCents: 2000, merchant: "Trader Joe's", spentOn: '2026-10-07', detail: 'weekly shop' });
+    expect(changes).not.toHaveProperty('categoryId'); // stays "sorted by a rule"
+    expect(router.back).toHaveBeenCalled();
+  });
+
+  it('sorts just this purchase under a different umbrella, never changing the saved rule', async () => {
+    const user = userEvent.setup();
+    await render(<AddExpenseScreen />);
+    await screen.findByText('Edit expense');
+
+    await user.press(screen.getByRole('button', { name: 'Health' }));
+    await user.press(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(mockedApi.updateExpense).toHaveBeenCalledWith('e1', expect.objectContaining({ categoryId: 5 }));
+    expect(mockedApi.saveMerchantRule).not.toHaveBeenCalled();
+    expect(mockedApi.addExpense).not.toHaveBeenCalled();
+  });
+
+  it('can sort an expense that was left unsorted', async () => {
+    mockedApi.getExpense.mockResolvedValue({ ...expense, category_id: null, category_source: null });
+    const user = userEvent.setup();
+    await render(<AddExpenseScreen />);
+    await screen.findByText('Edit expense');
+
+    await user.press(screen.getByRole('button', { name: 'Shopping' }));
+    await user.press(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(mockedApi.updateExpense).toHaveBeenCalledWith('e1', expect.objectContaining({ categoryId: SHOPPING }));
+  });
+
+  it('checks what was typed, like adding does', async () => {
+    const user = userEvent.setup();
+    await render(<AddExpenseScreen />);
+    const amount = await screen.findByPlaceholderText('Amount (e.g. 12.50)');
+
+    await user.clear(amount);
+    await user.type(amount, 'lots');
+    await user.press(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(screen.getByText("That amount doesn't look quite right. Try something like 12.50.")).toBeOnTheScreen();
+    expect(mockedApi.updateExpense).not.toHaveBeenCalled();
+  });
+
+  it('explains calmly and stays open when saving fails', async () => {
+    mockedApi.updateExpense.mockRejectedValue(new Error('offline'));
+    const user = userEvent.setup();
+    await render(<AddExpenseScreen />);
+    await screen.findByText('Edit expense');
+
+    await user.press(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(
+      await screen.findByText("That didn't save just now. Check your connection and try again."),
+    ).toBeOnTheScreen();
+    expect(router.back).not.toHaveBeenCalled();
+  });
+
+  it('explains calmly when the expense cannot be opened', async () => {
+    mockedApi.getExpense.mockRejectedValue(new Error('offline'));
+    await render(<AddExpenseScreen />);
+
+    expect(
+      await screen.findByText("We couldn't open that expense just now. Close this and try again."),
+    ).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeOnTheScreen();
+  });
+
+  describe('deleting', () => {
+    it('asks first, in plain words, and keeps the expense if you change your mind', async () => {
+      const user = userEvent.setup();
+      await render(<AddExpenseScreen />);
+      await user.press(await screen.findByRole('button', { name: 'Delete this expense' }));
+
+      expect(Alert.alert).toHaveBeenCalledWith('Delete this expense?', "This can't be undone.", expect.any(Array));
+      expect(dialogButtons().map((b) => b.text)).toEqual(['Keep it', 'Delete']);
+      expect(mockedApi.deleteExpense).not.toHaveBeenCalled();
+      expect(router.back).not.toHaveBeenCalled();
+    });
+
+    it('deletes that expense once confirmed, and closes', async () => {
+      const user = userEvent.setup();
+      await render(<AddExpenseScreen />);
+      await user.press(await screen.findByRole('button', { name: 'Delete this expense' }));
+
+      await act(async () => dialogButtons().find((b) => b.text === 'Delete')!.onPress!());
+
+      expect(mockedApi.deleteExpense).toHaveBeenCalledWith('e1');
+      expect(router.back).toHaveBeenCalled();
+    });
+
+    it('explains calmly and stays open when deleting fails', async () => {
+      mockedApi.deleteExpense.mockRejectedValue(new Error('offline'));
+      const user = userEvent.setup();
+      await render(<AddExpenseScreen />);
+      await user.press(await screen.findByRole('button', { name: 'Delete this expense' }));
+
+      await act(async () => dialogButtons().find((b) => b.text === 'Delete')!.onPress!());
+
+      expect(
+        await screen.findByText("That didn't delete just now. Check your connection and try again."),
+      ).toBeOnTheScreen();
+      expect(router.back).not.toHaveBeenCalled();
+    });
+  });
+
+  it('offers no delete when adding a new expense', async () => {
+    jest.mocked(useLocalSearchParams).mockReturnValue({});
+    await render(<AddExpenseScreen />);
+
+    expect(screen.getByText('Add expense')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Delete this expense' })).not.toBeOnTheScreen();
   });
 });

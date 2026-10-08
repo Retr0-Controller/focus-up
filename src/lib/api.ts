@@ -69,21 +69,35 @@ export async function setMonthlyAmount(userId: string, cents: number): Promise<v
   if (error) throw error;
 }
 
+const EXPENSE_COLUMNS = 'id, amount_cents, merchant, spent_on, category_id, detail, category_source';
+
+type ExpenseRow = Omit<Expense, 'category_source'> & { category_source: string | null };
+
+/** The database stores the source as text; only these two values are ever written. */
+function toExpense(row: ExpenseRow): Expense {
+  return {
+    ...row,
+    category_source: row.category_source === 'user' || row.category_source === 'rule' ? row.category_source : null,
+  };
+}
+
 /** Expenses with a date in [start, nextStart), newest first. Dates are "YYYY-MM-DD". */
 export async function listExpenses(start: string, nextStart: string): Promise<Expense[]> {
   const { data, error } = await supabase
     .from('expenses')
-    .select('id, amount_cents, merchant, spent_on, category_id, detail, category_source')
+    .select(EXPENSE_COLUMNS)
     .gte('spent_on', start)
     .lt('spent_on', nextStart)
     .order('spent_on', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) throw error;
-  // The database stores the source as text; only these two values are ever written.
-  return data.map((row) => ({
-    ...row,
-    category_source: row.category_source === 'user' || row.category_source === 'rule' ? row.category_source : null,
-  }));
+  return data.map(toExpense);
+}
+
+export async function getExpense(expenseId: string): Promise<Expense> {
+  const { data, error } = await supabase.from('expenses').select(EXPENSE_COLUMNS).eq('id', expenseId).single();
+  if (error) throw error;
+  return toExpense(data);
 }
 
 export type NewExpense = {
@@ -108,12 +122,37 @@ export async function addExpense(expense: NewExpense): Promise<void> {
   if (error) throw error;
 }
 
-/** Re-sorts a single purchase. The saved merchant rule is left alone. */
-export async function resortExpense(expenseId: string, categoryId: number): Promise<void> {
+export type ExpenseChanges = {
+  amountCents: number;
+  merchant: string;
+  spentOn: string;
+  detail: string | null;
+  /**
+   * Set only when the user picked a different umbrella for this purchase. Leave it out to keep the
+   * category (and whether a rule or the user chose it) exactly as it was. Editing never changes the
+   * saved merchant rule.
+   */
+  categoryId?: number;
+};
+
+export async function updateExpense(expenseId: string, changes: ExpenseChanges): Promise<void> {
   const { error } = await supabase
     .from('expenses')
-    .update({ category_id: categoryId, category_source: 'user' })
+    .update({
+      amount_cents: changes.amountCents,
+      merchant: changes.merchant,
+      spent_on: changes.spentOn,
+      detail: changes.detail,
+      ...(changes.categoryId === undefined
+        ? {}
+        : { category_id: changes.categoryId, category_source: 'user' }),
+    })
     .eq('id', expenseId);
+  if (error) throw error;
+}
+
+export async function deleteExpense(expenseId: string): Promise<void> {
+  const { error } = await supabase.from('expenses').delete().eq('id', expenseId);
   if (error) throw error;
 }
 
