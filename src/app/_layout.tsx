@@ -26,6 +26,11 @@ function RootNavigator() {
     if (!isLoading) SplashScreen.hideAsync();
   }, [isLoading]);
 
+  // Don't show any screen until we know who this is and whether they have finished onboarding.
+  // At launch the splash covers this. After signing in it lasts a moment, and avoids flashing
+  // the onboarding screen at someone who has already finished it.
+  if (isLoading) return null;
+
   return (
     <>
       <Stack screenOptions={{ headerShown: false }}>
