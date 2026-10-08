@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 import HomeScreen from '@/app/(tabs)/home';
 import { useSession } from '@/hooks/use-session';
 import * as api from '@/lib/api';
-import { supabase } from '@/lib/supabase';
 import { makeExpense, makeSession } from '@/test-utils/fixtures';
 
 jest.mock('@/lib/api');
@@ -80,18 +79,14 @@ describe('Home: left to spend', () => {
     expect(screen.queryByText(/-\$/)).not.toBeOnTheScreen();
   });
 
-  it('lets you change the monthly amount, starting from the current one', async () => {
+  it('links to Settings to change the monthly amount', async () => {
     givenMonth(200000);
     const user = userEvent.setup();
     await render(<HomeScreen />);
 
     await user.press(await screen.findByRole('button', { name: 'Change monthly amount' }));
-    expect(screen.getByPlaceholderText('e.g. 2000')).toHaveDisplayValue('2000');
-    await user.clear(screen.getByPlaceholderText('e.g. 2000'));
-    await user.type(screen.getByPlaceholderText('e.g. 2000'), '2500.50');
-    await user.press(screen.getByRole('button', { name: 'Save' }));
 
-    expect(mockedApi.setMonthlyAmount).toHaveBeenCalledWith('user-1', 250050);
+    expect(router.push).toHaveBeenCalledWith('/settings');
   });
 });
 
@@ -168,16 +163,5 @@ describe('Home: other', () => {
     await user.press(screen.getByRole('button', { name: 'Try again' }));
 
     expect(await screen.findByText('$500.00')).toBeOnTheScreen();
-  });
-
-  it('shows who is signed in, and signs out', async () => {
-    givenMonth(200000);
-    const user = userEvent.setup();
-    await render(<HomeScreen />);
-
-    expect(await screen.findByText('Signed in as me@example.com')).toBeOnTheScreen();
-    await user.press(screen.getByRole('button', { name: 'Sign out' }));
-
-    expect(supabase.auth.signOut).toHaveBeenCalled();
   });
 });
