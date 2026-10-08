@@ -48,6 +48,7 @@ npx expo lint      # lint
 npm test           # all automated tests (see below)
 npm run test:watch # re-run tests as you edit
 npm run test:db    # database security tests (needs the Supabase login and link, see Database)
+npm run types:db   # regenerate database types after a migration (same login and link)
 npx expo-doctor    # project health
 ```
 
@@ -60,6 +61,8 @@ GitHub runs the typecheck, lint, and `npm test` on every pull request (`.github/
 | Layer | Where | What it covers |
 | --- | --- | --- |
 | Logic | `src/lib/*.test.ts` | Money in cents, dates and month ranges, the left-to-spend math |
+| Database calls | `__tests__/api.test.ts` | What `src/lib/api.ts` actually asks Supabase for: the filters, the sort order, insert-or-update decisions |
+| Routing | `__tests__/routing.test.tsx` | The real root layout and router: who sees the landing page, onboarding, or Home, and who is kept out of what |
 | Screens | `__tests__/*.test.tsx` | Each screen as a person uses it: tapping, typing, and what shows up. Supabase is faked. |
 | Database | `supabase/tests/security.sql` | Row-level security, constraints, and sign-up behavior, against the real schema |
 
@@ -69,6 +72,8 @@ GitHub runs the typecheck, lint, and `npm test` on every pull request (`.github/
 - A new screen: add `__tests__/<screen>.test.tsx`. Copy the closest existing one. Mock `@/lib/api`, set up the
   data with `mockedApi.someFunction.mockResolvedValue(...)`, then `userEvent` and `screen` do the rest.
   `src/test-utils/fixtures.ts` has ready-made fake expenses and sessions.
+- A new function in `api.ts`: add a test to `__tests__/api.test.ts` using `fakeQuery` and `fakeTables` from `src/test-utils/fake-supabase.ts`.
+- A new screen that needs sign-in, or a new protected route: add it to the `routes` list in `__tests__/routing.test.tsx` and say who may see it.
 - A new table or rule: add checks to `supabase/tests/security.sql` above the final `RAISE`, then run `npm run test:db`.
 - Shared fakes (Supabase, the router, the date picker) live in `jest.setup.ts`.
 
@@ -82,6 +87,10 @@ npx supabase login
 npx supabase link --project-ref <your-project-ref>
 npx supabase db push
 ```
+
+After every migration, run `npm run types:db`. It rewrites `src/lib/database.types.ts` from the live schema, and
+TypeScript then flags any query that uses a column or table that doesn't exist. It doesn't catch everything
+(for example, a misspelled column in `.order()`), so `__tests__/api.test.ts` covers the rest.
 
 Money is stored as whole cents (`1250` is $12.50). Every per-user table is limited to its owner by
 row-level security, and the nine category "umbrellas" are shared, read-only rows.

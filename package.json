@@ -42,7 +42,8 @@
     "lint": "expo lint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:db": "node scripts/test-db.mjs"
+    "test:db": "node scripts/test-db.mjs",
+    "types:db": "node scripts/gen-types.mjs"
   },
   "private": true,
   "jest": {

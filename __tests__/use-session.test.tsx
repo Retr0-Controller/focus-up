@@ -3,22 +3,10 @@ import type { ReactNode } from 'react';
 
 import { SessionProvider, useSession } from '@/hooks/use-session';
 import * as api from '@/lib/api';
-import { supabase } from '@/lib/supabase';
+import { captureAuthListener } from '@/test-utils/auth';
 
 jest.mock('@/lib/api');
 const mockedApi = jest.mocked(api);
-
-type AuthListener = (event: string, session: unknown) => void;
-
-/** Captures the listener the provider registers, so a test can pretend someone signed in or out. */
-function captureAuthListener() {
-  let listener: AuthListener = () => {};
-  jest.mocked(supabase.auth.onAuthStateChange).mockImplementation(((cb: AuthListener) => {
-    listener = cb;
-    return { data: { subscription: { unsubscribe: jest.fn() } } };
-  }) as never);
-  return (event: string, session: unknown) => act(async () => listener(event, session));
-}
 
 const wrapper = ({ children }: { children: ReactNode }) => <SessionProvider>{children}</SessionProvider>;
 const signedIn = { user: { id: 'user-1', email: 'me@example.com' } };

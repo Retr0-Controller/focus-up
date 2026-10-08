@@ -79,7 +79,11 @@ export async function listExpenses(start: string, nextStart: string): Promise<Ex
     .order('spent_on', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data;
+  // The database stores the source as text; only these two values are ever written.
+  return data.map((row) => ({
+    ...row,
+    category_source: row.category_source === 'user' || row.category_source === 'rule' ? row.category_source : null,
+  }));
 }
 
 export type NewExpense = {

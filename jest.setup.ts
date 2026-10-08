@@ -52,7 +52,8 @@ beforeEach(() => {
   auth.signUp.mockReset();
   auth.signInWithPassword.mockReset();
   auth.signOut.mockReset();
-  jest.mocked(useLocalSearchParams).mockReturnValue({});
+  // (A test that uses the real router, via jest.unmock('expo-router'), has no mock to reset.)
+  if (jest.isMockFunction(useLocalSearchParams)) jest.mocked(useLocalSearchParams).mockReturnValue({});
 
   // Keep test output readable. Code logs a warning when something recoverable fails, which several
   // tests trigger on purpose. Tests that care can assert on `console.warn` themselves.
