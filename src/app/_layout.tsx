@@ -19,7 +19,7 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
-  const { session, isLoading } = useSession();
+  const { session, isLoading, onboardingDone } = useSession();
 
   return (
     <>
@@ -30,7 +30,10 @@ function RootNavigator() {
           <Stack.Screen name="index" />
           <Stack.Screen name="sign-in" />
         </Stack.Protected>
-        <Stack.Protected guard={!!session}>
+        <Stack.Protected guard={!!session && !onboardingDone}>
+          <Stack.Screen name="onboarding" />
+        </Stack.Protected>
+        <Stack.Protected guard={!!session && onboardingDone}>
           <Stack.Screen name="(tabs)" />
         </Stack.Protected>
       </Stack>

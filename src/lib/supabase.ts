@@ -6,14 +6,11 @@ import { AppState } from 'react-native';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
 
-// Static web rendering runs in Node, where there's no localStorage or session to keep.
-const isServer = typeof window === 'undefined';
-
 export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
   auth: {
-    storage: isServer ? undefined : localStorage,
-    autoRefreshToken: !isServer,
-    persistSession: !isServer,
+    storage: localStorage,
+    autoRefreshToken: true,
+    persistSession: true,
     detectSessionInUrl: false,
   },
 });
