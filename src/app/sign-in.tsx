@@ -6,16 +6,14 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
-  type TextInputProps,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/primary-button';
+import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/lib/supabase';
 
 type Mode = 'sign-in' | 'sign-up';
@@ -74,7 +72,7 @@ export default function SignInScreen() {
             <ThemedText type="subtitle">{isSignUp ? 'Create account' : 'Welcome back'}</ThemedText>
 
             <ThemedView style={styles.form}>
-              <Field
+              <TextField
                 placeholder="Email"
                 value={email}
                 onChangeText={setEmail}
@@ -83,7 +81,7 @@ export default function SignInScreen() {
                 keyboardType="email-address"
                 textContentType="emailAddress"
               />
-              <Field
+              <TextField
                 placeholder="Password"
                 value={password}
                 onChangeText={setPassword}
@@ -119,17 +117,6 @@ export default function SignInScreen() {
   );
 }
 
-function Field(props: TextInputProps) {
-  const theme = useTheme();
-  return (
-    <TextInput
-      placeholderTextColor={theme.textSecondary}
-      style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
-      {...props}
-    />
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -152,12 +139,6 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: Spacing.three,
-  },
-  input: {
-    borderRadius: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    fontSize: 16,
   },
   error: {
     color: '#E5484D',

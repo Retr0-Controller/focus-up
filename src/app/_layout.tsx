@@ -1,8 +1,8 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { SessionProvider, useSession } from '@/hooks/use-session';
 
 SplashScreen.preventAutoHideAsync();
@@ -21,10 +21,13 @@ export default function RootLayout() {
 function RootNavigator() {
   const { session, isLoading, onboardingDone } = useSession();
 
+  useEffect(() => {
+    // Keep the splash up until the saved session is restored, so the wrong screen never flashes.
+    if (!isLoading) SplashScreen.hideAsync();
+  }, [isLoading]);
+
   return (
     <>
-      {/* The overlay hides the native splash, so wait until the saved session is restored. */}
-      {!isLoading && <AnimatedSplashOverlay />}
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={!session}>
           <Stack.Screen name="index" />
