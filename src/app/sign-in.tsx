@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -20,7 +21,8 @@ import { supabase } from '@/lib/supabase';
 type Mode = 'sign-in' | 'sign-up';
 
 export default function SignInScreen() {
-  const [mode, setMode] = useState<Mode>('sign-in');
+  const params = useLocalSearchParams<{ mode?: string }>();
+  const [mode, setMode] = useState<Mode>(params.mode === 'sign-up' ? 'sign-up' : 'sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);

@@ -2,6 +2,7 @@ import { ActivityIndicator, Pressable, StyleSheet, type PressableProps } from 'r
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 
 export type PrimaryButtonProps = PressableProps & {
   title: string;
@@ -9,6 +10,7 @@ export type PrimaryButtonProps = PressableProps & {
 };
 
 export function PrimaryButton({ title, loading, disabled, style, ...rest }: PrimaryButtonProps) {
+  const theme = useTheme();
   const isDisabled = disabled || loading;
 
   return (
@@ -18,14 +20,15 @@ export function PrimaryButton({ title, loading, disabled, style, ...rest }: Prim
       disabled={isDisabled}
       style={(state) => [
         styles.button,
+        { backgroundColor: theme.accent },
         (state.pressed || isDisabled) && styles.dimmed,
         typeof style === 'function' ? style(state) : style,
       ]}
       {...rest}>
       {loading ? (
-        <ActivityIndicator color="#ffffff" />
+        <ActivityIndicator color={theme.accentText} />
       ) : (
-        <ThemedText style={styles.text}>{title}</ThemedText>
+        <ThemedText style={[styles.text, { color: theme.accentText }]}>{title}</ThemedText>
       )}
     </Pressable>
   );
@@ -33,7 +36,6 @@ export function PrimaryButton({ title, loading, disabled, style, ...rest }: Prim
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: '#208AEF',
     borderRadius: Spacing.four,
     paddingVertical: Spacing.three,
     alignItems: 'center',
@@ -44,7 +46,6 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   text: {
-    color: '#ffffff',
     fontWeight: 600,
   },
 });
