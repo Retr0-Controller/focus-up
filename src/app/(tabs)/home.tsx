@@ -1,34 +1,31 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { MonthlyAmountForm } from '@/components/monthly-amount-form';
 import { PrimaryButton } from '@/components/primary-button';
-import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { umbrellaById } from '@/constants/categories';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useMonthData } from '@/hooks/use-month-data';
 import { useSession } from '@/hooks/use-session';
 import { setMonthlyAmount, type Expense } from '@/lib/api';
 import { formatShortDate } from '@/lib/dates';
-import { formatCents, parseAmountToCents } from '@/lib/money';
-import { supabase } from '@/lib/supabase';
+import { formatCents } from '@/lib/money';
 
 export default function HomeScreen() {
   const { session } = useSession();
   const userId = session?.user.id;
   const month = useMonthData(userId);
-  const [editingAmount, setEditingAmount] = useState(false);
 
   const monthName = new Date().toLocaleDateString('en-US', { month: 'long' });
-  const showAmountForm = month.loaded && (month.monthlyCents === null || editingAmount);
+  const showAmountForm = month.loaded && month.monthlyCents === null;
   const leftCents = month.summary.leftCents ?? 0;
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
@@ -48,18 +45,16 @@ export default function HomeScreen() {
 
           {showAmountForm && (
             <MonthlyAmountForm
-              initialCents={month.monthlyCents}
-              onCancel={month.monthlyCents === null ? undefined : () => setEditingAmount(false)}
+              initialCents={null}
               onSave={async (cents) => {
                 if (!userId) return;
                 await setMonthlyAmount(userId, cents);
                 month.setMonthlyCents(cents);
-                setEditingAmount(false);
               }}
             />
           )}
 
-          {month.loaded && month.monthlyCents !== null && !editingAmount && (
+          {month.loaded && month.monthlyCents !== null && (
             <ThemedView type="backgroundElement" style={styles.card}>
               <ThemedText type="small" themeColor="textSecondary">
                 Left to spend
@@ -78,7 +73,7 @@ export default function HomeScreen() {
               </ThemedText>
               <Pressable
                 accessibilityRole="button"
-                onPress={() => setEditingAmount(true)}
+                onPress={() => router.push('/settings')}
                 style={styles.inlineLink}>
                 <ThemedText type="linkPrimary">Change monthly amount</ThemedText>
               </Pressable>
@@ -103,14 +98,6 @@ export default function HomeScreen() {
             ))}
           </View>
 
-          <View style={styles.footer}>
-            <ThemedText type="small" themeColor="textSecondary">
-              Signed in as {session?.user.email}
-            </ThemedText>
-            <Pressable accessibilityRole="button" onPress={() => supabase.auth.signOut()}>
-              <ThemedText type="linkPrimary">Sign out</ThemedText>
-            </Pressable>
-          </View>
         </ScrollView>
       </SafeAreaView>
 
@@ -145,66 +132,6 @@ function ExpenseRow({ expense, onPress }: { expense: Expense; onPress: () => voi
   );
 }
 
-function MonthlyAmountForm({
-  initialCents,
-  onSave,
-  onCancel,
-}: {
-  initialCents: number | null;
-  onSave: (cents: number) => Promise<void>;
-  onCancel?: () => void;
-}) {
-  const [text, setText] = useState(initialCents === null ? '' : String(initialCents / 100));
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSave() {
-    const cents = parseAmountToCents(text);
-    if (cents === null) {
-      setError("That amount doesn't look quite right. Try something like 2000.");
-      return;
-    }
-    setError(null);
-    setSaving(true);
-    try {
-      await onSave(cents);
-    } catch (e) {
-      console.warn('Could not save monthly amount', e);
-      setError("That didn't save just now. Check your connection and try again.");
-      setSaving(false);
-    }
-  }
-
-  return (
-    <ThemedView type="backgroundElement" style={styles.card}>
-      <ThemedText type="smallBold">
-        {initialCents === null ? 'How much would you like to spend each month?' : 'Monthly amount'}
-      </ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
-        We&apos;ll show what&apos;s left as you add expenses. You can change it anytime.
-      </ThemedText>
-      <TextField
-        placeholder="e.g. 2000"
-        value={text}
-        onChangeText={setText}
-        keyboardType="decimal-pad"
-        accessibilityLabel="Monthly amount"
-      />
-      {error && (
-        <ThemedText type="small" accessibilityRole="alert">
-          {error}
-        </ThemedText>
-      )}
-      <PrimaryButton title="Save" loading={saving} onPress={handleSave} />
-      {onCancel && (
-        <Pressable accessibilityRole="button" onPress={onCancel} style={styles.inlineLink}>
-          <ThemedText type="linkPrimary">Cancel</ThemedText>
-        </Pressable>
-      )}
-    </ThemedView>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -219,7 +146,7 @@ const styles = StyleSheet.create({
   content: {
     gap: Spacing.three,
     paddingTop: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.four,
+    paddingBottom: Spacing.four,
   },
   card: {
     borderRadius: Spacing.four,
@@ -244,10 +171,5 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     gap: Spacing.half,
-  },
-  footer: {
-    alignItems: 'center',
-    gap: Spacing.one,
-    paddingTop: Spacing.four,
   },
 });
