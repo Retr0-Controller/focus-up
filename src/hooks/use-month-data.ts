@@ -44,7 +44,6 @@ export function useMonthData(userId: string | undefined) {
     loaded,
     failed,
     expenses,
-    setExpenses,
     monthlyCents,
     setMonthlyCents,
     summary: summarizeMonth(monthlyCents, expenses),

@@ -135,6 +135,19 @@ begin
   select updated_at into after_ts from public.expenses where merchant = 'Old Row';
   if after_ts <= '2000-01-02'::timestamptz then raise exception 'FAIL updated_at did not change on edit'; end if;
 
+  -- She can edit and delete her own expenses (but only hers; Bob's attempts are checked below).
+  update public.expenses set amount_cents = 2000, merchant = 'Renamed Cafe' where merchant = 'Test Cafe';
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'FAIL alice could not edit her own expense'; end if;
+
+  delete from public.expenses where merchant = 'Unsorted Shop';
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'FAIL alice could not delete her own expense'; end if;
+
+  -- (Test Cafe was renamed, and Unsorted Shop deleted: Bob's checks below look for the rename.)
+  select count(*) into n from public.expenses where merchant = 'Renamed Cafe' and amount_cents = 2000;
+  if n <> 1 then raise exception 'FAIL the edit did not stick'; end if;
+
   -- ---------------------------------------------------------------------------------------------
   -- As Bob: he sees none of Alice's data, and cannot touch it.
   -- ---------------------------------------------------------------------------------------------
@@ -148,7 +161,7 @@ begin
   select count(*) into n from public.bills;          if n <> 0 then raise exception 'FAIL bob can see alice''s bills'; end if;
   select count(*) into n from public.profiles;       if n <> 1 then raise exception 'FAIL bob should see only his own profile, got %', n; end if;
 
-  update public.expenses set amount_cents = 1 where merchant = 'Test Cafe';
+  update public.expenses set amount_cents = 1 where merchant = 'Renamed Cafe';
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'FAIL bob edited alice''s expense'; end if;
 

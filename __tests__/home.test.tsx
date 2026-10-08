@@ -29,7 +29,6 @@ beforeEach(() => {
     finishOnboarding: jest.fn(),
   });
   mockedApi.setMonthlyAmount.mockResolvedValue();
-  mockedApi.resortExpense.mockResolvedValue();
 });
 
 describe('Home: left to spend', () => {
@@ -119,21 +118,24 @@ describe('Home: the list', () => {
     expect(within(sorted).getByText('weekly shop')).toBeOnTheScreen();
 
     const unsorted = screen.getByRole('button', { name: /Corner Shop/ });
-    expect(within(unsorted).getByText('Oct 8 · Not sorted yet · tap to sort')).toBeOnTheScreen();
+    expect(within(unsorted).getByText('Oct 8 · Not sorted yet')).toBeOnTheScreen();
   });
 
-  it('re-sorts a single purchase when tapped', async () => {
-    givenMonth(200000, [makeExpense({ id: 'e1', merchant: "Trader Joe's", category_id: 2 })]);
+  it('opens an expense for editing when tapped', async () => {
+    givenMonth(200000, [makeExpense({ id: 'e1', merchant: "Trader Joe's" })]);
     const user = userEvent.setup();
     await render(<HomeScreen />);
 
     await user.press(await screen.findByRole('button', { name: /Trader Joe's/ }));
-    expect(await screen.findByText("Sort Trader Joe's")).toBeOnTheScreen();
-    expect(screen.getByText('This changes only this purchase. Your saved rule for it stays the same.')).toBeOnTheScreen();
-    await user.press(screen.getByRole('button', { name: 'Health' }));
 
-    expect(mockedApi.resortExpense).toHaveBeenCalledWith('e1', 5);
-    expect(await screen.findByText('Oct 8 · 🩺 Health')).toBeOnTheScreen();
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/add-expense', params: { id: 'e1' } });
+  });
+
+  it('tells screen readers that tapping an expense edits it', async () => {
+    givenMonth(200000, [makeExpense({ merchant: "Trader Joe's" })]);
+    await render(<HomeScreen />);
+
+    expect(await screen.findByRole('button', { name: /Tap to edit\.$/ })).toBeOnTheScreen();
   });
 });
 
