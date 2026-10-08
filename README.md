@@ -45,9 +45,32 @@ and effort as possible.
 ```bash
 npx tsc --noEmit   # typecheck
 npx expo lint      # lint
-npm test           # unit tests for money, dates, and the left-to-spend math
+npm test           # all automated tests (see below)
+npm run test:watch # re-run tests as you edit
+npm run test:db    # database security tests (needs the Supabase login and link, see Database)
 npx expo-doctor    # project health
 ```
+
+GitHub runs the typecheck, lint, and `npm test` on every pull request (`.github/workflows/ci.yml`).
+
+## Tests
+
+`npm test` runs everything below in a few seconds and never touches the network or a real account.
+
+| Layer | Where | What it covers |
+| --- | --- | --- |
+| Logic | `src/lib/*.test.ts` | Money in cents, dates and month ranges, the left-to-spend math |
+| Screens | `__tests__/*.test.tsx` | Each screen as a person uses it: tapping, typing, and what shows up. Supabase is faked. |
+| Database | `supabase/tests/security.sql` | Row-level security, constraints, and sign-up behavior, against the real schema |
+
+**Adding tests for a new feature**
+
+- A new calculation or helper: add `something.test.ts` next to it in `src/lib/`.
+- A new screen: add `__tests__/<screen>.test.tsx`. Copy the closest existing one. Mock `@/lib/api`, set up the
+  data with `mockedApi.someFunction.mockResolvedValue(...)`, then `userEvent` and `screen` do the rest.
+  `src/test-utils/fixtures.ts` has ready-made fake expenses and sessions.
+- A new table or rule: add checks to `supabase/tests/security.sql` above the final `RAISE`, then run `npm run test:db`.
+- Shared fakes (Supabase, the router, the date picker) live in `jest.setup.ts`.
 
 ## Database
 
@@ -71,4 +94,5 @@ row-level security, and the nine category "umbrellas" are shared, read-only rows
 - `src/lib/api.ts`: **every** Supabase call. Screens call functions like `addExpense()` and never use
   the Supabase client directly.
 - `src/lib/money.ts`, `dates.ts`, `calc.ts`: pure logic, covered by tests
+- `__tests__/`, `src/test-utils/`, `jest.setup.ts`, `supabase/tests/`: automated tests
 - `src/constants/`: theme and the fixed umbrellas
