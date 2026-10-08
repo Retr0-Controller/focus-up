@@ -24,3 +24,11 @@ export const SPENDING_TYPES = [
   { name: 'Rideshare', emoji: '🚕' },
   { name: 'Books', emoji: '📖' },
 ] as const;
+
+export function umbrellaById(id: number | null): Umbrella | undefined {
+  return UMBRELLAS.find((umbrella) => umbrella.id === id);
+}
+
+export function spendingTypeEmoji(name: string): string {
+  return SPENDING_TYPES.find((type) => type.name === name)?.emoji ?? '🏷️';
+}
